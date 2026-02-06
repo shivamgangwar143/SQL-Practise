@@ -1,52 +1,67 @@
-alter procedure GetCustomerSummary @Country NVARCHAR(50)= 'USA' as
-    begin 
-    DECLARE @TotalCustomers INT, @AvgScore FLOAT;
--- Preparing & clean up dataselect 1 from Sales.Customers where Score is null and @Country = 'USA'
-IF EXISTS (select 1 from Sales.Customers where Score is null and Country = @Country)
+ALTER PROCEDURE GetCustomerSummary
+    @Country NVARCHAR(50) = 'USA'
+AS
 BEGIN
-BEGIN TRY
+    SET NOCOUNT ON;
 
-print 'Updating nulls into 0';
-update Sales.Customers
-set Score = 0
-where Score is null and Country = @Country
-END
+    DECLARE 
+        @TotalCustomers INT,
+        @AvgScore FLOAT;
 
-ELSE
-BEGIN
-print 'No null scores are found'
-END;
+    BEGIN TRY
 
--- Generating report
+        -- Cleanup
+        IF EXISTS (
+            SELECT 1
+            FROM Sales.Customers
+            WHERE Score IS NULL
+              AND Country = @Country
+        )
+        BEGIN
+            PRINT 'Updating null scores to 0';
 
-    SELECT
-    @TotalCustomers = COUNT(*),
-    @AvgScore = SUM(Score)
-    FROM Sales.Customers
-    where Country = @Country;
+            UPDATE Sales.Customers
+            SET Score = 0
+            WHERE Score IS NULL
+              AND Country = @Country;
+        END
+        ELSE
+        BEGIN
+            PRINT 'No null scores found';
+        END;
 
-    PRINT 'Total customers from '+ @Country+ ':'+ CAST(@TotalCustomers as NVARCHAR);
-    PRINT 'Average score from'+ @Country+ ':'+ CAST(@AvgScore as NVARCHAR);
+        -- Summary
+        SELECT
+            @TotalCustomers = COUNT(*),
+            @AvgScore = AVG(Score)
+        FROM Sales.Customers
+        WHERE Country = @Country;
 
-    SELECT
-    COUNT(OrderID) as TotalOrders,
-    SUM(Sales) as TotalSales,
-    1/0
-    FROM Sales.Orders o 
-    JOIN Sales.Customers c 
-    ON c.CustomerID = o.CustomerID
-    WHERE c.Country = @Country
+        PRINT 'Total customers from ' + @Country + ': ' + CAST(@TotalCustomers AS NVARCHAR);
+        PRINT 'Average score from ' + @Country + ': ' + CAST(@AvgScore AS NVARCHAR);
+
+        -- Orders report (intentional error for TRY/CATCH testing)
+        SELECT
+            COUNT(o.OrderID) AS TotalOrders,
+            SUM(o.Sales) AS TotalSales,
+            1 / 0 AS ForceError
+        FROM Sales.Orders o
+        JOIN Sales.Customers c
+            ON c.CustomerID = o.CustomerID
+        WHERE c.Country = @Country;
 
     END TRY
     BEGIN CATCH
-    PRINT 'An error occured.';
-    PRINT ('Error message: ' + error_message());
-    PRINT ('Error number: ' + CAST(error_number() AS NVARCHAR));
-    PRINT ('Error line: ' + CAST(error_line() AS NVARCHAR));
-    PRINT ('Error procedure: ' + error_procedure());
-
+        PRINT 'An error occurred.';
+        PRINT 'Error message: ' + ERROR_MESSAGE();
+        PRINT 'Error number: ' + CAST(ERROR_NUMBER() AS NVARCHAR);
+        PRINT 'Error line: ' + CAST(ERROR_LINE() AS NVARCHAR);
+        PRINT 'Error procedure: ' + ISNULL(ERROR_PROCEDURE(), 'N/A');
     END CATCH
-    END
-    GO
+
+END
+GO
+
 
     EXEC GetCustomerSummary;
+    EXEC GetCustomerSummary @Country='Germany';
